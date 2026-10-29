@@ -72,15 +72,21 @@ svg text.lb{fill:var(--ink);font-family:var(--font);font-size:11px}
 .tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:6px 9px;border-radius:4px;z-index:9;display:none;font-family:var(--mono);line-height:1.5}
 .note{font-size:12px;color:var(--ink2);line-height:1.8;margin:0;padding-left:18px}
 h3{font-size:13px;margin:14px 0 6px;color:var(--ink2)}
-.live{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);margin:-6px 0 14px}
-.live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin:2px 0 14px}
+.live{display:inline-flex;align-items:center;gap:6px}
+.live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .live.ok::before{background:var(--good)} .live.err{color:var(--bad)} .live.err::before{background:var(--bad)}
+.headline{font-size:17px;font-weight:700;margin:0 0 12px;text-wrap:balance}
+.headline em{font-style:normal;color:var(--acc)}
+.legend b{font-family:var(--mono);font-weight:500;color:var(--muted)}
+.ramp{gap:6px}.ramp i{width:44px;height:8px;border-radius:2px;background:linear-gradient(90deg,var(--bg),var(--heat))}
+.heat .c.pk{outline:2px solid var(--ink);outline-offset:-1px}
+.foot{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.7}
 </style>
 
 <div class="wrap">
   <h1>지하철 유동 대시보드</h1>
-  <p class="sub">상권 분석과 옥외광고 집행을 위해 서울교통공사 243개 역의 시간대별 승하차 인원을 모았습니다. 기간은 2024.01~2025.12이고, 평일·토·일 평균입니다.</p>
-  <p class="live" id="live">Supabase 데이터베이스에서 불러오는 중…</p>
+  <div class="meta"><span>서울교통공사 243개 역</span><span>2024.01–2025.12 일평균</span><span>단위: 명</span><span class="live" id="live">DB 연결 중</span></div>
 
   <div class="ctrl">
     <label><i class="dot" style="background:var(--sel)"></i>역 <input id="selIn" type="text" list="stList" autocomplete="off"></label>
@@ -93,49 +99,36 @@ h3{font-size:13px;margin:14px 0 6px;color:var(--ink2)}
   <section class="card" id="summary"></section>
 
   <section class="card">
-    <h2>어느 역이 집이고, 어느 역이 직장인가</h2>
-    <p class="cap">평일 출근 시간(07-09시)에 타는 사람 비율로 역의 성격이 갈립니다. 오른쪽 위는 사람이 많이 타고 내리는 큰 거점이고, 점을 누르면 그 역으로 바뀝니다.</p>
-    <div class="legend"><span><i class="dot" style="background:var(--home)"></i>주거 중심 (출근 승차 65% 이상)</span><span><i class="dot" style="background:var(--mix)"></i>혼합·환승</span><span><i class="dot" style="background:var(--work)"></i>업무·상권 중심 (35% 이하)</span></div>
+    <h2>아침에 내리는 역은 직장, 타는 역은 집</h2>
+    <div class="legend"><span><i class="dot" style="background:var(--work)"></i>업무·상권 중심 <b id="nWork"></b></span><span><i class="dot" style="background:var(--mix)"></i>혼합·환승 <b id="nMix"></b></span><span><i class="dot" style="background:var(--home)"></i>주거 중심 <b id="nHome"></b></span></div>
     <svg id="scatter" viewBox="0 0 960 400" role="img" aria-label="역별 출근 시간 승차 비율과 일평균 이용 인원 산점도"></svg>
   </section>
 
   <div class="grid2">
     <section class="card">
-      <h2>이 역의 하루</h2>
-      <p class="cap">시간대별 평균 인원입니다. 색 띠는 출근(07-09시)과 퇴근(18-20시) 시간입니다.</p>
+      <h2 id="curveT"></h2>
       <div class="legend" id="curveLg"></div>
       <svg id="curve" viewBox="0 0 520 300" role="img" aria-label="시간대별 승하차 인원 곡선"></svg>
     </section>
     <section class="card">
-      <h2>요일×시간 히트맵</h2>
-      <p class="cap">선택한 역의 요일별 시간대 평균입니다. 진할수록 붐빕니다.</p>
+      <h2 id="heatT"></h2>
+      <div class="legend"><span class="ramp"><i></i>적음 → 많음</span><span id="heatLg"></span></div>
       <div class="tw"><div class="heat" id="heat"></div></div>
     </section>
   </div>
 
   <section class="card" style="margin-top:16px">
-    <h2>시간대별 유동 상위 15개 역</h2>
-    <p class="cap">광고를 노출할 시간대를 고르면 그 시간대에 사람이 가장 많은 역이 나옵니다. 위의 요일과 지표 선택이 함께 적용됩니다.</p>
+    <h2 id="rankT"></h2>
     <p><span class="seg" id="dpSeg"></span></p>
     <div id="rank"></div>
   </section>
 
   <section class="card">
-    <h2>2024 대비 2025 일평균 이용 증감</h2>
-    <p class="cap">2024년 일평균이 3만 명 이상인 역 중 증감률 상위·하위 6곳입니다. 노선 개편이나 공사 영향이 섞여 있을 수 있어요.</p>
-    <div class="grid2"><div><h3>증가</h3><div class="gl" id="gUp"></div></div><div><h3>감소</h3><div class="gl" id="gDown"></div></div></div>
+    <h2 id="growT"></h2>
+    <div class="grid2"><div><h3>증가 상위 6</h3><div class="gl" id="gUp"></div></div><div><h3>감소 상위 6</h3><div class="gl" id="gDown"></div></div></div>
   </section>
 
-  <section class="card">
-    <h2>읽을 때 참고</h2>
-    <ul class="note">
-      <li>출처: 서울교통공사 역별 일별 시간대별 승하차인원(공공데이터포털, 서울 열린데이터광장), 공공누리 1유형.</li>
-      <li>서울교통공사 관할 구간만 포함합니다. 9호선, 공항철도, 코레일 구간은 빠집니다.</li>
-      <li>호선이 달라도 이름이 같은 환승역은 한 역으로 합산했습니다.</li>
-      <li>공휴일은 따로 구분하지 않고 요일로만 나눴습니다. 2024.01.01~2025.12.31 평균입니다.</li>
-      <li>승하차 인원은 이동량이지 광고 노출 수가 아닙니다. 광고 효과는 매체 위치와 체류 시간에 따라 달라집니다.</li>
-    </ul>
-  </section>
+  <p class="foot">출처: 서울교통공사 역별 일별 시간대별 승하차인원(공공데이터포털·서울 열린데이터광장), 공공누리 1유형 · 서울교통공사 관할 구간 · 환승역 합산 · 증감은 2024 일평균 3만 명 이상 역 · 승하차 인원 기준(광고 노출 수 아님)</p>
 </div>
 <div class="tip" id="tip"></div>
 
@@ -150,9 +143,9 @@ try{
   const rows=await r.json();
   if(!rows.length)throw new Error("빈 테이블");
   RAW={st:rows.map(o=>[o.name,o.lines,o.y24,o.y25,o.v])};
-  live.className="live ok";live.textContent=`Supabase station_flow 테이블에서 ${rows.length}개 역을 불러왔습니다 · ${new Date().toLocaleString("ko-KR")}`;
+  live.className="live ok";live.textContent=`Supabase 실시간 · ${rows.length}개 역`;live.title=`station_flow 테이블 · ${new Date().toLocaleString("ko-KR")} 불러옴`;
 }catch(e){
-  live.className="live err";live.textContent="데이터베이스에 연결하지 못했습니다 ("+e.message+"). 잠시 후 새로고침해 주세요.";
+  live.className="live err";live.textContent="DB 연결 실패 ("+e.message+") · 새로고침해 주세요";
   return;
 }
 const DOW=["월","화","수","목","금","토","일"];
@@ -194,24 +187,19 @@ function ptsLine(vals,X,Y){return vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)
 function renderSummary(s){
   const wd=cur(s,"wd","sum"),pk=wd.indexOf(Math.max(...wd));
   const on=cur(s,"wd","on"),off=cur(s,"wd","off");
-  const mOn=on[2]+on[3], mOff=off[2]+off[3], eOn=on[13]+on[14], eOff=off[13]+off[14];
   const wkRatio=s.weT/s.wdT, g=s.y24?(s.y25/s.y24-1)*100:null;
   const ty=TY[s.type];
-  const ins=[];
-  ins.push(`출근 시간(07-09시)에 ${fmtN(mOn)}명이 타고 ${fmtN(mOff)}명이 내립니다. 승차 비율은 ${(s.ratio*100).toFixed(0)}%로 ${ty[0]}에 가깝습니다.`);
-  ins.push(`평일에 가장 붐비는 시간은 ${lab(pk)}이고 이때 평균 ${fmtN(wd[pk])}명이 오갑니다.`);
-  if(s.type==="home")ins.push(`아침에 타는 사람이 많아 거주 인구가 두터운 역일 가능성이 높습니다. 출근길 승강장·스크린도어 광고와 동네 상권 홍보(배달, 학원, 생활 서비스)가 잘 맞을 수 있어요.`);
-  else if(s.type==="work")ins.push(`아침에 내리는 사람이 많아 직장인 도착 지점일 가능성이 높습니다. 출근 도착 시간(08-09시 전후)의 노출과 퇴근 후 프로모션(식음, 모임 상권)에 유리할 수 있어요. 퇴근 시간대(18-20시) 승차는 ${fmtN(eOn)}명입니다.`);
-  else ins.push(`특정 방향으로 쏠리지 않아 환승이나 상업 기능이 섞인 역으로 보입니다. 시간대별로 메시지를 나눠 편성하는 방식이 맞습니다.`);
-  ins.push(wkRatio>=1?`주말 일평균이 평일의 ${(wkRatio*100).toFixed(0)}%로 평일 이상입니다. 쇼핑·여가 목적 방문이 많은 역으로 볼 수 있어요.`:`주말 일평균은 평일의 ${(wkRatio*100).toFixed(0)}%입니다.${wkRatio<0.65?" 직장인 중심의 평일형 역입니다.":""}`);
+  const head=s.type==="home"?`아침에 <em>타는</em> 역 · 출근길·동네 상권 노출 후보`:s.type==="work"?`아침에 <em>내리는</em> 역 · 출근 도착·퇴근 후 노출 후보`:`<em>양방향</em> 역 · 시간대별 메시지 분리 후보`;
   $("#summary").innerHTML=`<div class="hd"><span class="name">${s.n}</span><span class="pill" style="background:${ty[1]}">${ty[0]}</span><span class="chip">${s.lines.split("/").join(" · ")}</span></div>
+   <p class="headline" style="--acc:${ty[1]}">${head}${wkRatio>=1?` · <em>주말</em>이 더 붐빔`:""}</p>
    <div class="kpis">
-    <div class="kpi"><div class="k">일평균 승하차</div><div class="v">${fmtN(s.vol)}</div><div class="n">7개 요일 평균, 명</div></div>
-    <div class="kpi"><div class="k">이용 순위</div><div class="v">${s.rank}위</div><div class="n">${S.length}개 역 중</div></div>
+    <div class="kpi"><div class="k">일평균 승하차</div><div class="v">${fmtN(s.vol)}</div><div class="n">명</div></div>
+    <div class="kpi"><div class="k">이용 순위</div><div class="v">${s.rank}위</div><div class="n">/ ${S.length}개 역</div></div>
     <div class="kpi"><div class="k">출근 승차 비율</div><div class="v">${(s.ratio*100).toFixed(0)}%</div><div class="n">평일 07-09시</div></div>
-    <div class="kpi"><div class="k">주말 대 평일</div><div class="v">${(wkRatio*100).toFixed(0)}%</div><div class="n">주말 일평균 / 평일 일평균</div></div>
-    <div class="kpi"><div class="k">2025 vs 2024</div><div class="v ${g==null?"":g>=0?"up":"down"}">${g==null?"–":(g>=0?"+":"")+g.toFixed(1)+"%"}</div><div class="n">일평균 이용 증감</div></div>
-   </div><ul class="ins">${ins.map(t=>`<li>${t}</li>`).join("")}</ul>`;
+    <div class="kpi"><div class="k">평일 피크</div><div class="v">${lab(pk)}</div><div class="n">${fmtN(wd[pk])}명</div></div>
+    <div class="kpi"><div class="k">주말 ÷ 평일</div><div class="v">${(wkRatio*100).toFixed(0)}%</div><div class="n">일평균 기준</div></div>
+    <div class="kpi"><div class="k">2025 vs 2024</div><div class="v ${g==null?"":g>=0?"up":"down"}">${g==null?"–":(g>=0?"+":"")+g.toFixed(1)+"%"}</div><div class="n">일평균 증감</div></div>
+   </div>`;
 }
 
 function renderScatter(){
@@ -220,7 +208,7 @@ function renderScatter(){
   let s=`<rect x="${X(0)}" y="${T}" width="${X(.35)-X(0)}" height="${H}" fill="var(--work)" opacity=".07"/><rect x="${X(.65)}" y="${T}" width="${X(1)-X(.65)}" height="${H}" fill="var(--home)" opacity=".07"/>`;
   [3000,10000,30000,100000,300000].forEach(v=>{s+=`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${cmp(v)}</text>`});
   [0,.25,.5,.75,1].forEach(r=>{s+=`<text x="${X(r)}" y="${B+18}" text-anchor="middle">${r*100}%</text>`});
-  s+=`<text x="${(L+R)/2}" y="${B+36}" text-anchor="middle">출근 시간(07-09시) 승차 비율 →</text><text x="${X(.175)}" y="${T+14}" text-anchor="middle" class="lb">업무·상권 중심</text><text x="${X(.825)}" y="${T+14}" text-anchor="middle" class="lb">주거 중심</text>`;
+  s+=`<text transform="translate(14 ${(T+B)/2}) rotate(-90)" text-anchor="middle">일평균 승하차(명, 로그)</text><text x="${(L+R)/2}" y="${B+36}" text-anchor="middle">출근 시간(07-09시) 승차 비율 →</text><text x="${X(.175)}" y="${T+14}" text-anchor="middle" class="lb">업무·상권 중심</text><text x="${X(.825)}" y="${T+14}" text-anchor="middle" class="lb">주거 중심</text>`;
   const col=t=>t==="home"?"var(--home)":t==="work"?"var(--work)":"var(--mix)";
   const others=S.filter(x=>x.n!==st.sel&&x.n!==st.cmp);
   others.forEach(x=>{s+=`<circle data-n="${x.n}" cx="${X(x.ratio).toFixed(1)}" cy="${Y(x.vol).toFixed(1)}" r="4.5" fill="${col(x.type)}" opacity=".7" style="cursor:pointer"/>`});
@@ -229,6 +217,7 @@ function renderScatter(){
   [[st.cmp,"var(--cmp)"],[st.sel,"var(--sel)"]].forEach(([n,c])=>{const x=byName.get(n);if(!x)return;
     s+=`<circle data-n="${x.n}" cx="${X(x.ratio).toFixed(1)}" cy="${Y(x.vol).toFixed(1)}" r="8" fill="${c}" stroke="var(--surface)" stroke-width="2.5" style="cursor:pointer"/><text class="lb" font-weight="700" x="${(X(x.ratio)+12).toFixed(1)}" y="${(Y(x.vol)+4).toFixed(1)}">${x.n.replace(/\(.*\)/,"")}</text>`});
   const el=$("#scatter");el.innerHTML=s;
+  ["work","mix","home"].forEach(t=>{$("#n"+t[0].toUpperCase()+t.slice(1)).textContent=S.filter(x=>x.type===t).length});
   el.onmousemove=e=>{const n=e.target.dataset&&e.target.dataset.n;if(!n){hideTip();return}const x=byName.get(n);showTip(e,`${x.n} (${x.lines})<br>일평균 ${fmtN(x.vol)}명<br>출근 승차 비율 ${(x.ratio*100).toFixed(0)}%`)};
   el.onmouseleave=hideTip;
   el.onclick=e=>{const n=e.target.dataset&&e.target.dataset.n;if(n){st.sel=n;render();$("#summary").scrollIntoView({behavior:"smooth",block:"start"})}};
@@ -239,15 +228,18 @@ function renderCurve(){
   const va=cur(a,st.dt,st.m),vb=b?cur(b,st.dt,st.m):null;
   const mx=Math.max(...va,...(vb||[0]),1);
   const step=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));for(const f of [1,2,2.5,5,10]){if(mx/(p*f)<=4.6)return p*f}return p*10})();
-  const top=Math.ceil(mx/step)*step,L=46,R=508,T=12,B=262,W=R-L,H=B-T;
+  const top=Math.ceil(mx/step)*step,L=46,R=508,T=26,B=262,W=R-L,H=B-T;
   const X=i=>L+(i+.5)/20*W,Y=v=>B-v/top*H;
   let s="";
-  [[2,3,"출근"],[13,14,"퇴근"]].forEach(([i0,i1,t])=>{s+=`<rect x="${X(i0)-W/40}" y="${T}" width="${(i1-i0+1)*W/20}" height="${H}" fill="var(--heat)" opacity=".08"/><text x="${X(i0)-W/40+3}" y="${T+11}">${t}</text>`});
+  [[2,3,"출근"],[13,14,"퇴근"]].forEach(([i0,i1,t])=>{s+=`<rect x="${X(i0)-W/40}" y="${T}" width="${(i1-i0+1)*W/20}" height="${H}" fill="var(--heat)" opacity=".08"/><text x="${X(i0)-W/40+3}" y="${B-6}">${t}</text>`});
   for(let v=0;v<=top+1e-6;v+=step){s+=`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end">${cmp(v)}</text>`}
   for(let i=0;i<20;i+=3){s+=`<text x="${X(i)}" y="${B+16}" text-anchor="middle">${i===0?"~6":i===19?"24~":5+i}</text>`}
   s+=`<text x="${(L+R)/2}" y="${B+32}" text-anchor="middle">시각(시)</text>`;
   if(vb)s+=`<path d="${ptsLine(vb,X,Y)}" fill="none" stroke="var(--cmp)" stroke-width="2.2" stroke-linejoin="round"/>`;
   s+=`<path d="${ptsLine(va,X,Y)} L${X(19)},${B} L${X(0)},${B} Z" fill="var(--sel)" opacity=".1"/><path d="${ptsLine(va,X,Y)}" fill="none" stroke="var(--sel)" stroke-width="2.6" stroke-linejoin="round"/>`;
+  const pk=va.indexOf(Math.max(...va));
+  s+=`<text x="${L-6}" y="12" text-anchor="end">명</text><circle cx="${X(pk)}" cy="${Y(va[pk])}" r="4.5" fill="var(--sel)" stroke="var(--surface)" stroke-width="2"/><text class="lb" font-weight="700" x="${X(pk)}" y="${Y(va[pk])-9}" text-anchor="${pk>15?"end":pk<4?"start":"middle"}">${fmtN(va[pk])}</text>`;
+  $("#curveT").innerHTML=`${a.n}, <span style="color:var(--sel)">${lab(pk)}</span>에 가장 붐빈다`;
   s+=`<line id="cx" x1="0" x2="0" y1="${T}" y2="${B}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>`;
   for(let i=0;i<20;i++)s+=`<rect class="hit" data-i="${i}" x="${X(i)-W/40}" y="${T}" width="${W/20}" height="${H}" fill="transparent"/>`;
   const el=$("#curve");el.innerHTML=s;
@@ -261,9 +253,12 @@ function renderCurve(){
 function renderHeat(){
   const a=byName.get(st.sel);
   const g=[];for(let d=0;d<7;d++){const r=[];for(let h=0;h<20;h++){const on=a.v[d*40+h],off=a.v[d*40+20+h];r.push(st.m==="on"?on:st.m==="off"?off:on+off)}g.push(r)}
-  const mx=Math.max(...g.flat(),1);
+  const mx=Math.max(...g.flat(),1),pk=g.flat().indexOf(mx),pd=Math.floor(pk/20),ph=pk%20;
+  const wk=a.weT/a.wdT;
+  $("#heatT").innerHTML=`${a.n}, ${wk>=1?`<span style="color:var(--sel)">주말</span>이 더 붐비는 역`:wk<0.65?`<span style="color:var(--sel)">평일</span>에 몰리는 역`:`주말에도 꾸준한 역`}`;
+  $("#heatLg").textContent=`최고 ${DOW[pd]}요일 ${lab(ph)} · ${fmtN(mx)}명`;
   let h=`<div></div>`+Array.from({length:20},(_,i)=>`<div class="hl">${i===0?"~6":i===19?"24~":5+i}</div>`).join("");
-  g.forEach((r,d)=>{h+=`<div class="dl">${DOW[d]}</div>`+r.map((v,i)=>`<div class="c" data-d="${d}" data-i="${i}" data-v="${Math.round(v)}" style="--h:${(v/mx).toFixed(3)}"></div>`).join("")});
+  g.forEach((r,d)=>{h+=`<div class="dl">${DOW[d]}</div>`+r.map((v,i)=>`<div class="c${d===pd&&i===ph?" pk":""}" data-d="${d}" data-i="${i}" data-v="${Math.round(v)}" style="--h:${(v/mx).toFixed(3)}"></div>`).join("")});
   const el=$("#heat");el.innerHTML=h;
   el.onmousemove=e=>{const t=e.target;if(!t.dataset||t.dataset.d===undefined){hideTip();return}showTip(e,`${a.n} ${DOW[+t.dataset.d]}요일<br>${lab(+t.dataset.i)} ${fmtN(+t.dataset.v)}명<br>${MET[st.m]}`)};
   el.onmouseleave=hideTip;
@@ -272,7 +267,8 @@ function renderHeat(){
 function renderRank(){
   const idx=DP[st.dp][1];
   const list=S.map(s=>{const c=cur(s,st.dt,st.m);return{s,val:idx.reduce((x,i)=>x+c[i],0)}}).sort((a,b)=>b.val-a.val).slice(0,15);
-  const mx=list[0].val||1;
+  const mx=list[0].val||1,top=list[0].s.n.replace(/\(.*\)/,""),me=list.findIndex(o=>o.s.n===st.sel);
+  $("#rankT").innerHTML=`${DP[st.dp][0].split(" ")[0]} 시간 1위는 <span style="color:var(--sel)">${top}</span>${me>0?` · ${st.sel} ${me+1}위`:""}`;
   $("#rank").innerHTML=list.map((o,i)=>`<div class="row" data-n="${o.s.n}"><span class="rk">${i+1}</span><span>${o.s.n.replace(/\(.*\)/,"")}<br><small>${o.s.lines.split("/").join("·")}</small></span><span class="t"><i style="width:${o.val/mx*100}%;background:${o.s.n===st.sel?"var(--sel)":"var(--mix)"}"></i></span><span class="num">${cmp(o.val)}명</span></div>`).join("");
   $("#rank").querySelectorAll(".row").forEach(r=>{r.onclick=()=>{st.sel=r.dataset.n;render()};
     const o=list.find(x=>x.s.n===r.dataset.n);r.onmousemove=e=>showTip(e,`${o.s.n}<br>${DP[st.dp][0]} ${fmtN(o.val)}명<br>${DT[st.dt]} · ${MET[st.m]} 평균`);r.onmouseleave=hideTip});
@@ -282,6 +278,7 @@ function renderRank(){
 function renderGrowth(){
   const c=S.filter(s=>s.y24>=30000&&s.y25>0).map(s=>({s,g:(s.y25/s.y24-1)*100})).sort((a,b)=>b.g-a.g);
   const f=o=>`<button data-n="${o.s.n}">${o.s.n.replace(/\(.*\)/,"")}</button><span class="${o.g>=0?"up":"down"}">${o.g>=0?"+":""}${o.g.toFixed(1)}%</span>`;
+  $("#growT").innerHTML=`2025년 가장 많이 늘어난 역은 <span class="up">${c[0].s.n.replace(/\(.*\)/,"")} +${c[0].g.toFixed(1)}%</span>`;
   $("#gUp").innerHTML=c.slice(0,6).map(f).join("");
   $("#gDown").innerHTML=c.slice(-6).reverse().map(f).join("");
   document.querySelectorAll(".gl button").forEach(b=>b.onclick=()=>{st.sel=b.dataset.n;render()});
