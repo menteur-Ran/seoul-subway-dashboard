@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>지하철 유동 대시보드</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky station controls, station summary card, then home-vs-work scatter, 24h curve, weekday heatmap, daypart ranking and growth lists. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#141a26; --ink2:#465266; --muted:#8693a6; --line:#dde2ea;
+  --sel:#2459e6; --cmp:#e8731a; --home:#7b5cd6; --work:#0e9c88; --mix:#9aa6b6; --heat:#2459e6; --good:#1f8a57; --bad:#c2452f;
+  --font:'Noto Sans KR',system-ui,-apple-system,'Malgun Gothic',sans-serif; --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e131b; --surface:#161d29; --ink:#e8edf5; --ink2:#a9b5c7; --muted:#76849a; --line:#263042;
+  --sel:#6d93ff; --cmp:#f29a55; --home:#a28cf0; --work:#3fc9b4; --mix:#6f7c90; --heat:#6d93ff; --good:#58c58b; --bad:#ee8a76; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e131b; --surface:#161d29; --ink:#e8edf5; --ink2:#a9b5c7; --muted:#76849a; --line:#263042;
+  --sel:#6d93ff; --cmp:#f29a55; --home:#a28cf0; --work:#3fc9b4; --mix:#6f7c90; --heat:#6d93ff; --good:#58c58b; --bad:#ee8a76; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.6;margin:0}
+.wrap{max-width:1100px;margin:0 auto;padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:24px;font-weight:700;margin:0 0 2px;text-wrap:balance}
+.sub{color:var(--ink2);margin:0 0 14px;max-width:68ch}
+.ctrl{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-bottom:16px}
+.ctrl label{font-size:12px;color:var(--ink2);display:flex;align-items:center;gap:8px}
+.ctrl input[type=text]{font:inherit;width:150px;padding:6px 8px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:5px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;background:transparent;color:var(--ink2);border:0;padding:6px 11px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--sel);color:#fff;font-weight:500}
+.seg button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-offset:-2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin-bottom:16px;min-width:0}
+h2{font-size:16px;font-weight:700;margin:0 0 2px}
+.cap{font-size:12px;color:var(--ink2);margin:0 0 12px;max-width:75ch}
+.hd{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;margin-bottom:10px}
+.hd .name{font-size:28px;font-weight:700;line-height:1.2}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 10px;color:var(--ink2)}
+.pill{font-size:12px;font-weight:500;border-radius:999px;padding:2px 11px;color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpi{border:1px solid var(--line);border-radius:6px;padding:10px 12px;min-width:0}
+.kpi .k{font-size:12px;color:var(--ink2)}
+.kpi .v{font-family:var(--mono);font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .n{font-size:11px;color:var(--muted)}
+.ins{margin:0;padding-left:18px;color:var(--ink);max-width:80ch}
+.ins li{margin-bottom:4px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.grid2>.card{margin-bottom:0}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+svg text.lb{fill:var(--ink);font-family:var(--font);font-size:11px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.heat{display:grid;grid-template-columns:28px repeat(20,minmax(22px,1fr));gap:2px;min-width:560px;font-size:11px;color:var(--muted)}
+.heat .c{height:26px;border-radius:2px;background:color-mix(in srgb,var(--heat) calc(var(--h)*88%),var(--bg))}
+.heat .hl{text-align:center;font-family:var(--mono);font-size:10px}
+.heat .dl{display:flex;align-items:center;font-size:12px;color:var(--ink2)}
+.tw{overflow-x:auto}
+.row{display:grid;grid-template-columns:22px minmax(80px,140px) minmax(0,1fr) auto;gap:10px;align-items:center;padding:3px 0;font-size:13px;cursor:pointer;border-radius:4px}
+.row:hover{background:var(--bg)}
+.row .rk{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+.row .t{height:10px;background:var(--bg);border-radius:2px}
+.row .t i{display:block;height:100%;background:var(--sel);border-radius:0 3px 3px 0}
+.row .num{font-family:var(--mono);font-size:12px;color:var(--ink2);white-space:nowrap}
+.row small{color:var(--muted);font-size:11px}
+.gl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;font-size:13px}
+.gl button{all:unset;cursor:pointer;color:var(--ink)}
+.gl button:hover{text-decoration:underline}
+.gl span{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.up{color:var(--good)} .down{color:var(--bad)}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:6px 9px;border-radius:4px;z-index:9;display:none;font-family:var(--mono);line-height:1.5}
+.note{font-size:12px;color:var(--ink2);line-height:1.8;margin:0;padding-left:18px}
+h3{font-size:13px;margin:14px 0 6px;color:var(--ink2)}
+.live{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);margin:-6px 0 14px}
+.live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.live.ok::before{background:var(--good)} .live.err{color:var(--bad)} .live.err::before{background:var(--bad)}
+</style>
+
+<div class="wrap">
+  <h1>지하철 유동 대시보드</h1>
+  <p class="sub">상권 분석과 옥외광고 집행을 위해 서울교통공사 243개 역의 시간대별 승하차 인원을 모았습니다. 기간은 2024.01~2025.12이고, 평일·토·일 평균입니다.</p>
+  <p class="live" id="live">Supabase 데이터베이스에서 불러오는 중…</p>
+
+  <div class="ctrl">
+    <label><i class="dot" style="background:var(--sel)"></i>역 <input id="selIn" type="text" list="stList" autocomplete="off"></label>
+    <label><i class="dot" style="background:var(--cmp)"></i>비교 역 <input id="cmpIn" type="text" list="stList" autocomplete="off" placeholder="비교 없음"></label>
+    <label>요일 <span class="seg" id="dtSeg"><button data-v="wd" aria-pressed="true">평일</button><button data-v="sat" aria-pressed="false">토</button><button data-v="sun" aria-pressed="false">일</button></span></label>
+    <label>지표 <span class="seg" id="mSeg"><button data-v="sum" aria-pressed="true">승하차 합계</button><button data-v="on" aria-pressed="false">승차</button><button data-v="off" aria-pressed="false">하차</button></span></label>
+    <datalist id="stList"></datalist>
+  </div>
+
+  <section class="card" id="summary"></section>
+
+  <section class="card">
+    <h2>어느 역이 집이고, 어느 역이 직장인가</h2>
+    <p class="cap">평일 출근 시간(07-09시)에 타는 사람 비율로 역의 성격이 갈립니다. 오른쪽 위는 사람이 많이 타고 내리는 큰 거점이고, 점을 누르면 그 역으로 바뀝니다.</p>
+    <div class="legend"><span><i class="dot" style="background:var(--home)"></i>주거 중심 (출근 승차 65% 이상)</span><span><i class="dot" style="background:var(--mix)"></i>혼합·환승</span><span><i class="dot" style="background:var(--work)"></i>업무·상권 중심 (35% 이하)</span></div>
+    <svg id="scatter" viewBox="0 0 960 400" role="img" aria-label="역별 출근 시간 승차 비율과 일평균 이용 인원 산점도"></svg>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>이 역의 하루</h2>
+      <p class="cap">시간대별 평균 인원입니다. 색 띠는 출근(07-09시)과 퇴근(18-20시) 시간입니다.</p>
+      <div class="legend" id="curveLg"></div>
+      <svg id="curve" viewBox="0 0 520 300" role="img" aria-label="시간대별 승하차 인원 곡선"></svg>
+    </section>
+    <section class="card">
+      <h2>요일×시간 히트맵</h2>
+      <p class="cap">선택한 역의 요일별 시간대 평균입니다. 진할수록 붐빕니다.</p>
+      <div class="tw"><div class="heat" id="heat"></div></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <h2>시간대별 유동 상위 15개 역</h2>
+    <p class="cap">광고를 노출할 시간대를 고르면 그 시간대에 사람이 가장 많은 역이 나옵니다. 위의 요일과 지표 선택이 함께 적용됩니다.</p>
+    <p><span class="seg" id="dpSeg"></span></p>
+    <div id="rank"></div>
+  </section>
+
+  <section class="card">
+    <h2>2024 대비 2025 일평균 이용 증감</h2>
+    <p class="cap">2024년 일평균이 3만 명 이상인 역 중 증감률 상위·하위 6곳입니다. 노선 개편이나 공사 영향이 섞여 있을 수 있어요.</p>
+    <div class="grid2"><div><h3>증가</h3><div class="gl" id="gUp"></div></div><div><h3>감소</h3><div class="gl" id="gDown"></div></div></div>
+  </section>
+
+  <section class="card">
+    <h2>읽을 때 참고</h2>
+    <ul class="note">
+      <li>출처: 서울교통공사 역별 일별 시간대별 승하차인원(공공데이터포털, 서울 열린데이터광장), 공공누리 1유형.</li>
+      <li>서울교통공사 관할 구간만 포함합니다. 9호선, 공항철도, 코레일 구간은 빠집니다.</li>
+      <li>호선이 달라도 이름이 같은 환승역은 한 역으로 합산했습니다.</li>
+      <li>공휴일은 따로 구분하지 않고 요일로만 나눴습니다. 2024.01.01~2025.12.31 평균입니다.</li>
+      <li>승하차 인원은 이동량이지 광고 노출 수가 아닙니다. 광고 효과는 매체 위치와 체류 시간에 따라 달라집니다.</li>
+    </ul>
+  </section>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const SB_URL="https://hmqbnxvamhblwzmsseao.supabase.co",SB_KEY="sb_publishable_akKb5220ao5XPX-2MIUjMg_PF_kbCeF";
+(async()=>{
+const live=document.getElementById("live");
+let RAW;
+try{
+  const r=await fetch(SB_URL+"/rest/v1/station_flow?select=name,lines,y24,y25,v&order=ord",{headers:{apikey:SB_KEY}});
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  const rows=await r.json();
+  if(!rows.length)throw new Error("빈 테이블");
+  RAW={st:rows.map(o=>[o.name,o.lines,o.y24,o.y25,o.v])};
+  live.className="live ok";live.textContent=`Supabase station_flow 테이블에서 ${rows.length}개 역을 불러왔습니다 · ${new Date().toLocaleString("ko-KR")}`;
+}catch(e){
+  live.className="live err";live.textContent="데이터베이스에 연결하지 못했습니다 ("+e.message+"). 잠시 후 새로고침해 주세요.";
+  return;
+}
+const DOW=["월","화","수","목","금","토","일"];
+const lab=i=>i===0?"06시 이전":i===19?"24시 이후":String(5+i).padStart(2,"0")+"-"+String(6+i).padStart(2,"0")+"시";
+const DP=[["출근 07-09시",[2,3]],["점심 11-14시",[6,7,8]],["퇴근 18-20시",[13,14]],["저녁 20-23시",[15,16,17]],["심야 23시 이후",[18,19]]];
+const MET={sum:"승하차 합계",on:"승차",off:"하차"}, DT={wd:"평일",sat:"토요일",sun:"일요일"};
+const $=s=>document.querySelector(s), tip=$("#tip");
+const fmtN=v=>Math.round(v).toLocaleString();
+const cmp=v=>v>=10000?(v/10000).toFixed(v>=100000?0:1)+"만":Math.round(v).toLocaleString();
+const st={sel:"강남",cmp:"신림",dt:"wd",m:"sum",dp:0};
+function showTip(e,h){tip.innerHTML=h;tip.style.display="block";const w=tip.offsetWidth;tip.style.left=Math.max(4,Math.min(innerWidth-w-8,e.clientX+12))+"px";tip.style.top=(e.clientY+14)+"px"}
+function hideTip(){tip.style.display="none"}
+
+const S=RAW.st.map(a=>({n:a[0],lines:a[1],y24:a[2],y25:a[3],v:a[4]}));
+function dsOf(dt){return dt==="wd"?[0,1,2,3,4]:dt==="sat"?[5]:[6]}
+function cur(s,dt,m){const ds=dsOf(dt),o=Array(20).fill(0);ds.forEach(d=>{for(let h=0;h<20;h++){const on=s.v[d*40+h],off=s.v[d*40+20+h];o[h]+=m==="on"?on:m==="off"?off:on+off}});return o.map(x=>x/ds.length)}
+S.forEach(s=>{
+  const wd=cur(s,"wd","sum"),sa=cur(s,"sat","sum"),su=cur(s,"sun","sum"),T=a=>a.reduce((x,y)=>x+y,0);
+  s.wdT=T(wd);s.weT=(T(sa)+T(su))/2;s.vol=(s.wdT*5+T(sa)+T(su))/7;
+  const on=cur(s,"wd","on"),off=cur(s,"wd","off");const a=on[2]+on[3],b=off[2]+off[3];
+  s.ratio=a+b>0?a/(a+b):0.5;
+  s.type=s.ratio>=0.65?"home":s.ratio<=0.35?"work":"mix";
+});
+const byVol=[...S].sort((a,b)=>b.vol-a.vol);byVol.forEach((s,i)=>s.rank=i+1);
+const byName=new Map(S.map(s=>[s.n,s]));
+const TY={home:["주거 중심형","var(--home)"],work:["업무·상권 중심형","var(--work)"],mix:["혼합·환승형","var(--mix)"]};
+$("#stList").innerHTML=byVol.map(s=>`<option value="${s.n}">`).join("");
+
+function setStation(key,name){if(byName.has(name)){st[key]=name}else if(key==="cmp"&&name===""){st.cmp=""}render()}
+$("#selIn").addEventListener("change",e=>{if(byName.has(e.target.value))st.sel=e.target.value;render()});
+$("#cmpIn").addEventListener("change",e=>{st.cmp=byName.has(e.target.value)?e.target.value:"";render()});
+function seg(id,key){document.querySelectorAll(id+" button").forEach(b=>b.onclick=()=>{st[key]=b.dataset.v;render()})}
+seg("#dtSeg","dt");seg("#mSeg","m");
+$("#dpSeg").innerHTML=DP.map((d,i)=>`<button data-v="${i}">${d[0]}</button>`).join("");
+document.querySelectorAll("#dpSeg button").forEach(b=>b.onclick=()=>{st.dp=+b.dataset.v;render()});
+
+function ptsLine(vals,X,Y){return vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}
+
+function renderSummary(s){
+  const wd=cur(s,"wd","sum"),pk=wd.indexOf(Math.max(...wd));
+  const on=cur(s,"wd","on"),off=cur(s,"wd","off");
+  const mOn=on[2]+on[3], mOff=off[2]+off[3], eOn=on[13]+on[14], eOff=off[13]+off[14];
+  const wkRatio=s.weT/s.wdT, g=s.y24?(s.y25/s.y24-1)*100:null;
+  const ty=TY[s.type];
+  const ins=[];
+  ins.push(`출근 시간(07-09시)에 ${fmtN(mOn)}명이 타고 ${fmtN(mOff)}명이 내립니다. 승차 비율은 ${(s.ratio*100).toFixed(0)}%로 ${ty[0]}에 가깝습니다.`);
+  ins.push(`평일에 가장 붐비는 시간은 ${lab(pk)}이고 이때 평균 ${fmtN(wd[pk])}명이 오갑니다.`);
+  if(s.type==="home")ins.push(`아침에 타는 사람이 많아 거주 인구가 두터운 역일 가능성이 높습니다. 출근길 승강장·스크린도어 광고와 동네 상권 홍보(배달, 학원, 생활 서비스)가 잘 맞을 수 있어요.`);
+  else if(s.type==="work")ins.push(`아침에 내리는 사람이 많아 직장인 도착 지점일 가능성이 높습니다. 출근 도착 시간(08-09시 전후)의 노출과 퇴근 후 프로모션(식음, 모임 상권)에 유리할 수 있어요. 퇴근 시간대(18-20시) 승차는 ${fmtN(eOn)}명입니다.`);
+  else ins.push(`특정 방향으로 쏠리지 않아 환승이나 상업 기능이 섞인 역으로 보입니다. 시간대별로 메시지를 나눠 편성하는 방식이 맞습니다.`);
+  ins.push(wkRatio>=1?`주말 일평균이 평일의 ${(wkRatio*100).toFixed(0)}%로 평일 이상입니다. 쇼핑·여가 목적 방문이 많은 역으로 볼 수 있어요.`:`주말 일평균은 평일의 ${(wkRatio*100).toFixed(0)}%입니다.${wkRatio<0.65?" 직장인 중심의 평일형 역입니다.":""}`);
+  $("#summary").innerHTML=`<div class="hd"><span class="name">${s.n}</span><span class="pill" style="background:${ty[1]}">${ty[0]}</span><span class="chip">${s.lines.split("/").join(" · ")}</span></div>
+   <div class="kpis">
+    <div class="kpi"><div class="k">일평균 승하차</div><div class="v">${fmtN(s.vol)}</div><div class="n">7개 요일 평균, 명</div></div>
+    <div class="kpi"><div class="k">이용 순위</div><div class="v">${s.rank}위</div><div class="n">${S.length}개 역 중</div></div>
+    <div class="kpi"><div class="k">출근 승차 비율</div><div class="v">${(s.ratio*100).toFixed(0)}%</div><div class="n">평일 07-09시</div></div>
+    <div class="kpi"><div class="k">주말 대 평일</div><div class="v">${(wkRatio*100).toFixed(0)}%</div><div class="n">주말 일평균 / 평일 일평균</div></div>
+    <div class="kpi"><div class="k">2025 vs 2024</div><div class="v ${g==null?"":g>=0?"up":"down"}">${g==null?"–":(g>=0?"+":"")+g.toFixed(1)+"%"}</div><div class="n">일평균 이용 증감</div></div>
+   </div><ul class="ins">${ins.map(t=>`<li>${t}</li>`).join("")}</ul>`;
+}
+
+function renderScatter(){
+  const L=56,R=940,T=14,B=360,W=R-L,H=B-T,ymin=Math.log10(1500),ymax=Math.log10(300000);
+  const X=r=>L+r*W,Y=v=>B-(Math.log10(Math.max(v,1500))-ymin)/(ymax-ymin)*H;
+  let s=`<rect x="${X(0)}" y="${T}" width="${X(.35)-X(0)}" height="${H}" fill="var(--work)" opacity=".07"/><rect x="${X(.65)}" y="${T}" width="${X(1)-X(.65)}" height="${H}" fill="var(--home)" opacity=".07"/>`;
+  [3000,10000,30000,100000,300000].forEach(v=>{s+=`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end">${cmp(v)}</text>`});
+  [0,.25,.5,.75,1].forEach(r=>{s+=`<text x="${X(r)}" y="${B+18}" text-anchor="middle">${r*100}%</text>`});
+  s+=`<text x="${(L+R)/2}" y="${B+36}" text-anchor="middle">출근 시간(07-09시) 승차 비율 →</text><text x="${X(.175)}" y="${T+14}" text-anchor="middle" class="lb">업무·상권 중심</text><text x="${X(.825)}" y="${T+14}" text-anchor="middle" class="lb">주거 중심</text>`;
+  const col=t=>t==="home"?"var(--home)":t==="work"?"var(--work)":"var(--mix)";
+  const others=S.filter(x=>x.n!==st.sel&&x.n!==st.cmp);
+  others.forEach(x=>{s+=`<circle data-n="${x.n}" cx="${X(x.ratio).toFixed(1)}" cy="${Y(x.vol).toFixed(1)}" r="4.5" fill="${col(x.type)}" opacity=".7" style="cursor:pointer"/>`});
+  const lbl=new Set(byVol.slice(0,7).map(x=>x.n));
+  others.filter(x=>lbl.has(x.n)).forEach(x=>{s+=`<text class="lb" x="${(X(x.ratio)+7).toFixed(1)}" y="${(Y(x.vol)+4).toFixed(1)}">${x.n.replace(/\(.*\)/,"")}</text>`});
+  [[st.cmp,"var(--cmp)"],[st.sel,"var(--sel)"]].forEach(([n,c])=>{const x=byName.get(n);if(!x)return;
+    s+=`<circle data-n="${x.n}" cx="${X(x.ratio).toFixed(1)}" cy="${Y(x.vol).toFixed(1)}" r="8" fill="${c}" stroke="var(--surface)" stroke-width="2.5" style="cursor:pointer"/><text class="lb" font-weight="700" x="${(X(x.ratio)+12).toFixed(1)}" y="${(Y(x.vol)+4).toFixed(1)}">${x.n.replace(/\(.*\)/,"")}</text>`});
+  const el=$("#scatter");el.innerHTML=s;
+  el.onmousemove=e=>{const n=e.target.dataset&&e.target.dataset.n;if(!n){hideTip();return}const x=byName.get(n);showTip(e,`${x.n} (${x.lines})<br>일평균 ${fmtN(x.vol)}명<br>출근 승차 비율 ${(x.ratio*100).toFixed(0)}%`)};
+  el.onmouseleave=hideTip;
+  el.onclick=e=>{const n=e.target.dataset&&e.target.dataset.n;if(n){st.sel=n;render();$("#summary").scrollIntoView({behavior:"smooth",block:"start"})}};
+}
+
+function renderCurve(){
+  const a=byName.get(st.sel),b=byName.get(st.cmp);
+  const va=cur(a,st.dt,st.m),vb=b?cur(b,st.dt,st.m):null;
+  const mx=Math.max(...va,...(vb||[0]),1);
+  const step=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));for(const f of [1,2,2.5,5,10]){if(mx/(p*f)<=4.6)return p*f}return p*10})();
+  const top=Math.ceil(mx/step)*step,L=46,R=508,T=12,B=262,W=R-L,H=B-T;
+  const X=i=>L+(i+.5)/20*W,Y=v=>B-v/top*H;
+  let s="";
+  [[2,3,"출근"],[13,14,"퇴근"]].forEach(([i0,i1,t])=>{s+=`<rect x="${X(i0)-W/40}" y="${T}" width="${(i1-i0+1)*W/20}" height="${H}" fill="var(--heat)" opacity=".08"/><text x="${X(i0)-W/40+3}" y="${T+11}">${t}</text>`});
+  for(let v=0;v<=top+1e-6;v+=step){s+=`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end">${cmp(v)}</text>`}
+  for(let i=0;i<20;i+=3){s+=`<text x="${X(i)}" y="${B+16}" text-anchor="middle">${i===0?"~6":i===19?"24~":5+i}</text>`}
+  s+=`<text x="${(L+R)/2}" y="${B+32}" text-anchor="middle">시각(시)</text>`;
+  if(vb)s+=`<path d="${ptsLine(vb,X,Y)}" fill="none" stroke="var(--cmp)" stroke-width="2.2" stroke-linejoin="round"/>`;
+  s+=`<path d="${ptsLine(va,X,Y)} L${X(19)},${B} L${X(0)},${B} Z" fill="var(--sel)" opacity=".1"/><path d="${ptsLine(va,X,Y)}" fill="none" stroke="var(--sel)" stroke-width="2.6" stroke-linejoin="round"/>`;
+  s+=`<line id="cx" x1="0" x2="0" y1="${T}" y2="${B}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>`;
+  for(let i=0;i<20;i++)s+=`<rect class="hit" data-i="${i}" x="${X(i)-W/40}" y="${T}" width="${W/20}" height="${H}" fill="transparent"/>`;
+  const el=$("#curve");el.innerHTML=s;
+  el.querySelectorAll(".hit").forEach(h=>{const i=+h.dataset.i;
+    h.onmousemove=e=>{const c=$("#cx");c.setAttribute("x1",X(i));c.setAttribute("x2",X(i));c.setAttribute("opacity",1);
+      showTip(e,`${lab(i)}<br>${a.n} ${fmtN(va[i])}명${vb?`<br>${b.n} ${fmtN(vb[i])}명`:""}`)};
+    h.onmouseleave=()=>{$("#cx").setAttribute("opacity",0);hideTip()}});
+  $("#curveLg").innerHTML=`<span><i class="dot" style="background:var(--sel)"></i>${a.n}</span>${b?`<span><i class="dot" style="background:var(--cmp)"></i>${b.n}</span>`:""}<span>${DT[st.dt]} · ${MET[st.m]}</span>`;
+}
+
+function renderHeat(){
+  const a=byName.get(st.sel);
+  const g=[];for(let d=0;d<7;d++){const r=[];for(let h=0;h<20;h++){const on=a.v[d*40+h],off=a.v[d*40+20+h];r.push(st.m==="on"?on:st.m==="off"?off:on+off)}g.push(r)}
+  const mx=Math.max(...g.flat(),1);
+  let h=`<div></div>`+Array.from({length:20},(_,i)=>`<div class="hl">${i===0?"~6":i===19?"24~":5+i}</div>`).join("");
+  g.forEach((r,d)=>{h+=`<div class="dl">${DOW[d]}</div>`+r.map((v,i)=>`<div class="c" data-d="${d}" data-i="${i}" data-v="${Math.round(v)}" style="--h:${(v/mx).toFixed(3)}"></div>`).join("")});
+  const el=$("#heat");el.innerHTML=h;
+  el.onmousemove=e=>{const t=e.target;if(!t.dataset||t.dataset.d===undefined){hideTip();return}showTip(e,`${a.n} ${DOW[+t.dataset.d]}요일<br>${lab(+t.dataset.i)} ${fmtN(+t.dataset.v)}명<br>${MET[st.m]}`)};
+  el.onmouseleave=hideTip;
+}
+
+function renderRank(){
+  const idx=DP[st.dp][1];
+  const list=S.map(s=>{const c=cur(s,st.dt,st.m);return{s,val:idx.reduce((x,i)=>x+c[i],0)}}).sort((a,b)=>b.val-a.val).slice(0,15);
+  const mx=list[0].val||1;
+  $("#rank").innerHTML=list.map((o,i)=>`<div class="row" data-n="${o.s.n}"><span class="rk">${i+1}</span><span>${o.s.n.replace(/\(.*\)/,"")}<br><small>${o.s.lines.split("/").join("·")}</small></span><span class="t"><i style="width:${o.val/mx*100}%;background:${o.s.n===st.sel?"var(--sel)":"var(--mix)"}"></i></span><span class="num">${cmp(o.val)}명</span></div>`).join("");
+  $("#rank").querySelectorAll(".row").forEach(r=>{r.onclick=()=>{st.sel=r.dataset.n;render()};
+    const o=list.find(x=>x.s.n===r.dataset.n);r.onmousemove=e=>showTip(e,`${o.s.n}<br>${DP[st.dp][0]} ${fmtN(o.val)}명<br>${DT[st.dt]} · ${MET[st.m]} 평균`);r.onmouseleave=hideTip});
+  document.querySelectorAll("#dpSeg button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.v===st.dp));
+}
+
+function renderGrowth(){
+  const c=S.filter(s=>s.y24>=30000&&s.y25>0).map(s=>({s,g:(s.y25/s.y24-1)*100})).sort((a,b)=>b.g-a.g);
+  const f=o=>`<button data-n="${o.s.n}">${o.s.n.replace(/\(.*\)/,"")}</button><span class="${o.g>=0?"up":"down"}">${o.g>=0?"+":""}${o.g.toFixed(1)}%</span>`;
+  $("#gUp").innerHTML=c.slice(0,6).map(f).join("");
+  $("#gDown").innerHTML=c.slice(-6).reverse().map(f).join("");
+  document.querySelectorAll(".gl button").forEach(b=>b.onclick=()=>{st.sel=b.dataset.n;render()});
+}
+
+function render(){
+  $("#selIn").value=st.sel;$("#cmpIn").value=st.cmp;
+  document.querySelectorAll("#dtSeg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===st.dt));
+  document.querySelectorAll("#mSeg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===st.m));
+  renderSummary(byName.get(st.sel));renderScatter();renderCurve();renderHeat();renderRank();renderGrowth();
+}
+render();
+})();
+</script>
+</html>
